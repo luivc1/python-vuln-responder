@@ -1,0 +1,11 @@
+{
+  "name": "python-vuln-responder",
+  "owner": { "name": "Innovatask LLC" },
+  "plugins": [
+    {
+      "name": "python-vuln-responder",
+      "source": "./",
+      "description": "Find and fix vulnerable PyPI packages (first advisory: Pillow < 13.0.0) across every Python environment, lockfile and Dockerfile."
+    }
+  ]
+}

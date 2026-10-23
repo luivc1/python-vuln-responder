@@ -1,0 +1,7 @@
+{
+  "name": "python-vuln-responder",
+  "version": "1.0.0",
+  "description": "Find and fix vulnerable PyPI packages across every Python environment, lockfile and Dockerfile. Advisory-driven (first advisory: Pillow < 13.0.0, October 2026), flags Pythons too old for the fix, optional OSV.dev check, fix plans and EN/ES comms.",
+  "author": { "name": "Innovatask LLC" },
+  "keywords": ["python", "pypi", "pillow", "vulnerability", "lockfile", "docker", "security", "incident-response"]
+}
