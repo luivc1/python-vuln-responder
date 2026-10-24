@@ -2,7 +2,12 @@
 
 Find and fix every Python environment, lockfile and Docker image that still carries a
 vulnerable PyPI package, with AI agents doing the legwork and a human approving every
-change. First advisory: **Pillow < 13.0.0** (October 2026).
+change. Advisories included:
+
+| Advisory | Affected | Fixed | Note |
+|---|---|---|---|
+| **Pillow** (October 2026) | `pillow` < 13.0.0 | 13.0.0 | Needs Python >= 3.11 (3.10 apps are BLOCKED) |
+| **HTTP2Shell** (CVE-2026-111497) | `Brotli` < 1.2.1, `brotlicffi` < 1.2.1.0 | 1.2.1 / 1.2.1.0 | Reached through requests/urllib3, aiohttp, httpx, Scrapy |
 
 > Pillow 13.0.0 fixes about 40 security issues, two rated critical: stale image storage
 > after mode changes and JPEG decoder overflows, plus EPS filename injection into
@@ -13,7 +18,26 @@ change. First advisory: **Pillow < 13.0.0** (October 2026).
 
 ![Workflow](docs/workflow.svg)
 
-## The catch: Python 3.10
+## HTTP2Shell: Brotli in Python
+
+HTTP2Shell is the Brotli decoder bug first fixed in Node.js (CVE-2026-111497, also
+"Node2Shell"). PyPI's `Brotli` and `brotlicffi` bundle the same decoder. Most apps never
+import them: **urllib3 (so requests, pip, botocore), aiohttp, httpx and Scrapy decode
+Brotli automatically once one is installed**, so any fetch of an attacker-controlled URL
+(webhooks, link previews, crawlers) or an aiohttp server receiving Brotli bodies reaches it.
+
+| The scanner flags | Status |
+|---|---|
+| Brotli < 1.2.1 / brotlicffi < 1.2.1.0 in any environment, with the HTTP clients that make it reachable | AFFECTED + risk lines |
+| Locks, `requirements`, Dockerfiles pinning old versions | AFFECTED |
+| `urllib3[brotli]`, `httpx[brotli]`, `aiohttp[speedups]` without a Brotli pin | WARN |
+| OS copies (`python3-brotli`): fixed when the distro changelog lists the CVE (Debian 12/13 yes, Ubuntu under evaluation) | OK / AFFECTED with the `apt` command |
+| Code calling `brotli.decompress()` | INFO hint |
+
+No confirmed attacks yet (not in CISA KEV as of October 24). Node.js, Bun and the
+system Brotli library are covered by [node-vuln-responder](https://github.com/luivc1/node-vuln-responder).
+
+## The catch for Pillow: Python 3.10
 
 | | Status | What to do |
 |---|---|---|
@@ -39,6 +63,8 @@ python3 scripts/pyvuln-scan.py --local --venvs ~/code --project ~/code -o pyvuln
   the package, with hints for risky calls (`thumbnail()`/`draft()`, EPS, TIFF to memory).
 - **Advisory-driven:** each `advisories/*.env` describes one package. Add a file and the
   same scanner covers the next PyPI incident.
+- **Distro backports:** packages installed by apt/dnf are checked against their
+  changelog, so a patched `python3-brotli` with an old version number is not a false alarm.
 - **Optional `--osv`:** checks every other installed package against OSV.dev (sends
   only names and versions).
 - **Fix plan:** exact upgrade commands per environment, a checklist per project,
@@ -54,7 +80,7 @@ only, Linux / macOS / Windows (`py -3 pyvuln-scan.py ...`).
 | **Scanner** | `scripts/pyvuln-scan.py` |
 | **Skills** | `pyvr-navigator` (start here), `pyvr-scan`, `pyvr-fix` (+ playbooks), `pyvr-verify-close`, `pyvr-comms` (EN/ES), `pyvr-advisory-update` |
 | **Claude Code** | `/pyvr`, `/pyvr-scan`, `/pyvr-fix`, `/pyvr-verify`; `pyvr-verifier` agent; a hook that **asks before every install, re-lock or rebuild** and blocks disabling TLS verification or fetching exploit files |
-| **Advisory** | `advisories/pillow-2026-10.env`: range, fix, minimum Python, risk factors, code hints, mitigations, IDs |
+| **Advisories** | `advisories/pillow-2026-10.env`, `brotli-2026-10.env`, `brotlicffi-2026-10.env`: range, fix, minimum Python, backport CVEs, risk factors, extras that pull the package in, code hints, mitigations, IDs |
 
 ## Install
 
@@ -69,8 +95,8 @@ only, Linux / macOS / Windows (`py -3 pyvuln-scan.py ...`).
 ```
 
 Other agents: point them at [`AGENTS.md`](AGENTS.md). Or ask: *"Are my Python apps
-affected by the Pillow vulnerability?"* / *"¿Mis apps de Python están afectadas por la
-vulnerabilidad de Pillow?"*
+affected by the Pillow vulnerability?"*, *"Is my Python affected by HTTP2Shell?"* /
+*"¿Mis apps de Python están afectadas por HTTP2Shell?"*
 
 ## Safety
 

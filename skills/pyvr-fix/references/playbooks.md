@@ -43,6 +43,22 @@ Python 3.10 reaches end of life in October 2026, so this is the moment to move. 
      run image processing in an isolated, low-privilege worker.
 4. Record the exception: owner, date, mitigations applied, re-scan evidence.
 
+## HTTP2Shell: Brotli and brotlicffi
+
+| Kind | Steps |
+|---|---|
+| venv | `<PY> -m pip install --upgrade "Brotli>=1.2.1"` / `"brotlicffi>=1.2.1.0"`, then `<PY> -m pip check` |
+| Extras (`urllib3[brotli]`, `httpx[brotli]`, `aiohttp[speedups]`) | Add `Brotli>=1.2.1` to requirements/constraints or `pyproject.toml`, re-lock |
+| uv / Poetry / pip-tools / PDM | `uv lock --upgrade-package brotli`, `poetry update brotli`, `pip-compile --upgrade-package brotli`, `pdm update brotli` |
+| Debian / Ubuntu `python3-brotli` | `sudo apt-get install --only-upgrade python3-brotli` (Debian 12: 1.0.9-2+deb12u1, Debian 13: 1.1.0-2+deb13u1); Ubuntu: still under evaluation, so move the app into a venv with Brotli 1.2.1 or uninstall Brotli if optional |
+| Docker | Pin `Brotli>=1.2.1` in the image's requirements and rebuild with `--pull` |
+| Brotli optional? | `<PY> -m pip uninstall Brotli brotlicffi` and drop the extras: urllib3/httpx stop advertising `br` and cannot decode it. Check with the app's tests (some APIs return Brotli only when asked) |
+
+Interim, if you cannot upgrade yet: block `Content-Encoding: br` request bodies at the
+proxy for aiohttp servers; run URL-fetching workers unprivileged, with no secrets in their
+environment and restricted outbound network. Stripping `br` from `Accept-Encoding` alone
+is not enough: a malicious server can still send Brotli.
+
 ## Rollback
 
 Every upgrade records the previous version in the fix log. Roll back with

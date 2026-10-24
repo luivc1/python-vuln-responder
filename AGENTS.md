@@ -7,15 +7,18 @@ does not load Agent Skills natively. Harnesses that do load skills should start 
 ## Purpose
 
 Find and fix vulnerable PyPI packages across every Python environment, lockfile and
-Dockerfile, driven by advisory files. First advisory: **Pillow < 13.0.0** (October 2026,
-about 40 fixes, two critical). Pillow 13.0.0 needs Python >= 3.11 and has no 12.x
-backport, so Python 3.10 apps are **BLOCKED** until they move to a newer Python.
+Dockerfile, driven by advisory files:
+- **Pillow < 13.0.0** (October 2026, about 40 fixes, two critical). Pillow 13.0.0 needs
+  Python >= 3.11 and has no 12.x backport, so Python 3.10 apps are **BLOCKED**.
+- **HTTP2Shell** (CVE-2026-111497): **Brotli < 1.2.1** and **brotlicffi < 1.2.1.0**. Reached
+  through urllib3/requests, aiohttp, httpx and Scrapy, which decode Brotli automatically.
+  OS copies count as fixed when the distro changelog lists the CVE.
 
 ## Map
 
 | Path | What it is |
 |---|---|
-| `advisories/*.env` | One package per file: affected range, fixed version, minimum Python, risk factors, code hints, mitigations, IDs, sources. Read first. |
+| `advisories/*.env` | One package per file: affected range, fixed version, minimum Python, backport CVEs, risk factors, extras that pull it in, code hints, mitigations, IDs, sources. Read first. |
 | `scripts/pyvuln-scan.py` | Python 3.8+ stdlib. `--local`, `--venvs DIR`, `--python PATH`, `--project DIR`, `--advisory FILE`, `--osv`. Writes HTML, CSV and a fix plan. |
 | `skills/pyvr-*/SKILL.md` | navigator, scan, fix (+ playbooks), verify-close, comms (EN/ES), advisory-update. |
 

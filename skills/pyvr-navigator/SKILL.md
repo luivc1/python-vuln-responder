@@ -1,6 +1,6 @@
 ---
 name: pyvr-navigator
-description: Entry point for vulnerable PyPI packages across Python environments, starting with the Pillow security release (Pillow < 13.0.0, October 2026). Use when someone asks whether their Python apps, virtualenvs, lockfiles, Docker images or servers are affected by a package vulnerability, or how to fix them. Triggers - "Pillow vulnerability", "PIL flaw", "is my Python app affected", "upgrade Pillow everywhere", "Python 3.10 can't upgrade", "¿mi app de Python está afectada?", "actualizar Pillow". Routes to the right pyvr-* skill and enforces the safety rules.
+description: Entry point for vulnerable PyPI packages across Python environments - the Pillow security release (Pillow < 13.0.0, October 2026) and HTTP2Shell (Brotli < 1.2.1, brotlicffi < 1.2.1.0, CVE-2026-111497). Use when someone asks whether their Python apps, virtualenvs, lockfiles, Docker images or servers are affected by a package vulnerability, or how to fix them. Triggers - "Pillow vulnerability", "PIL flaw", "HTTP2Shell", "Python2Shell", "Brotli vulnerability", "is my Python app affected", "upgrade Pillow everywhere", "Python 3.10 can't upgrade", "¿mi app de Python está afectada?", "actualizar Pillow". Routes to the right pyvr-* skill and enforces the safety rules.
 ---
 
 # Python Vuln Responder: Navigator
@@ -31,6 +31,24 @@ Use the first that exists: `$PYVR_HOME/scripts`, `../../scripts` relative to thi
   or saving TIFF to `io.BytesIO`. The scanner reports these as risk context and hints.
 - **Who is most at risk:** apps that process images from users or the internet (uploads,
   avatars, thumbnails, document/OCR pipelines, scrapers).
+
+## 1b. The answer for HTTP2Shell (advisories `brotli-2026-10`, `brotlicffi-2026-10`)
+
+- **Affected:** PyPI `Brotli` < 1.2.1 and `brotlicffi` < 1.2.1.0. They bundle Google's
+  Brotli decoder (1.0.3 to 1.2.0), which has an out-of-bounds write (CVE-2026-111497).
+- **How it is reached:** few apps import Brotli, but **urllib3 (requests, pip, botocore),
+  aiohttp, httpx and Scrapy decode Brotli automatically once it is installed**. Any
+  request to an attacker-controlled URL (webhooks, link previews, crawlers, scrapers,
+  integrations that follow user-supplied URLs) can deliver a malicious Brotli response;
+  aiohttp servers also inflate Brotli request bodies.
+- **Fixed:** Brotli 1.2.1 (wheels for every CPython back to 2.7), brotlicffi 1.2.1.0
+  (Python >= 3.8). OS copies (`python3-brotli`): Debian 12 and 13 fixed via the brotli
+  source package; Ubuntu under evaluation. The scanner reads the distro changelog.
+- **Status (2026-10-24):** no confirmed exploitation, not in CISA KEV; memory corruption
+  confirmed in Python with AddressSanitizer.
+- **Quick bridge:** where Brotli is optional, uninstall it (and drop `urllib3[brotli]`,
+  `httpx[brotli]`, `aiohttp[speedups]`): clients stop asking for and decoding Brotli.
+- Node.js, Bun and the system Brotli library: **node-vuln-responder**.
 
 ## 2. Intake
 

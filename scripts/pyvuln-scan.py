@@ -24,7 +24,7 @@ USAGE
 EXIT  0 nothing affected, 1 warnings/manual checks, 2 affected or blocked, 3 usage error
 """
 
-import argparse, csv, glob, html, json, os, re, shutil, subprocess, sys, urllib.request, urllib.error
+import argparse, csv, glob, gzip, html, json, os, re, shutil, subprocess, sys, urllib.request, urllib.error
 from datetime import datetime
 
 VERSION = "1.0.0"
@@ -123,6 +123,8 @@ def load_advisory(path):
             try: hints.append((re.compile(rx.strip()), label.strip()))
             except re.error: pass
     adv["_hints"] = hints
+    adv["_pulled"] = [x.strip() for x in adv.get("PULLED_BY", "").split("|") if x.strip()]
+    adv["_backport_cves"] = adv.get("BACKPORT_CVES", "").split()
     adv["_file"] = path
     return adv
 
@@ -261,6 +263,52 @@ def host_binaries(names):
     return found
 
 # ---------------------------------------------------------------------------
+# OS-managed copies (Debian/Ubuntu dist-packages, RHEL/Fedora site-packages)
+# ---------------------------------------------------------------------------
+_OWNER_CACHE = {}
+
+def os_owner(loc, dist_name):
+    """(os_package, changelog_text) when a distro package owns this distribution, else None."""
+    if IS_WIN or not loc or not loc.startswith("/usr/") or loc.startswith("/usr/local/"):
+        return None
+    key = (loc, norm(dist_name))
+    if key in _OWNER_CACHE:
+        return _OWNER_CACHE[key]
+    res = None
+    for meta in glob.glob(os.path.join(loc, "*.dist-info")) + glob.glob(os.path.join(loc, "*.egg-info")):
+        stem = re.sub(r"\.(dist|egg)-info$", "", os.path.basename(meta))
+        if norm(re.split(r"-(?=\d)", stem)[0]) != norm(dist_name):
+            continue
+        try:
+            if shutil.which("dpkg"):
+                cp = subprocess.run(["dpkg", "-S", meta], capture_output=True, text=True, timeout=20)
+                pkg = cp.stdout.split(":", 1)[0].strip() if cp.returncode == 0 else ""
+                if pkg:
+                    log = ""
+                    for f in ("/usr/share/doc/%s/changelog.Debian.gz" % pkg, "/usr/share/doc/%s/changelog.gz" % pkg):
+                        if os.path.isfile(f):
+                            with gzip.open(f, "rt", encoding="utf-8", errors="replace") as fh: log = fh.read()
+                            break
+                    res = (pkg, log); break
+            if shutil.which("rpm"):
+                cp = subprocess.run(["rpm", "-qf", "--qf", "%{NAME}", meta], capture_output=True, text=True, timeout=20)
+                if cp.returncode == 0 and cp.stdout.strip() and "not owned" not in cp.stdout:
+                    pkg = cp.stdout.strip()
+                    log = subprocess.run(["rpm", "-q", "--changelog", pkg], capture_output=True, text=True, timeout=20).stdout
+                    res = (pkg, log); break
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    _OWNER_CACHE[key] = res
+    return res
+
+def os_update_cmd(pkg):
+    if shutil.which("apt-get"): return "sudo apt-get update && sudo apt-get install --only-upgrade %s" % pkg
+    if shutil.which("dnf"): return "sudo dnf upgrade %s" % pkg
+    if shutil.which("yum"): return "sudo yum update %s" % pkg
+    if shutil.which("zypper"): return "sudo zypper update %s" % pkg
+    return "update the OS package %s" % pkg
+
+# ---------------------------------------------------------------------------
 # Analysis
 # ---------------------------------------------------------------------------
 SEV = {"AFFECTED": 0, "BLOCKED": 1, "WARN": 2, "CHECK": 3, "OK": 4, "INFO": 5}
@@ -284,6 +332,18 @@ def analyze_env(py, info, advisories, hostbins):
                 "location": rec[2], "source": "advisory"}
         if aff is None:
             findings.append(dict(base, status="CHECK", detail="could not parse version %s" % ver, fix="Check manually against %s" % adv["AFFECTED"]))
+        elif aff and os_owner(rec[2], rec[1]):
+            pkg, log = os_owner(rec[2], rec[1])
+            cves = adv["_backport_cves"]
+            if cves and all(cv in log for cv in cves):
+                findings.append(dict(base, status="OK", detail="%s %s comes from the OS package %s, whose changelog lists %s (distro backport)" % (
+                    rec[1], ver, pkg, " ".join(cves)), fix=""))
+            else:
+                findings.append(dict(base, status="AFFECTED", os_pkg=pkg,
+                    detail="%s %s is vulnerable (%s); installed by the OS package %s%s" % (rec[1], ver, adv["ADVISORY_NAME"], pkg,
+                        ", no backport listed in its changelog" if cves else ""),
+                    fix="Apply the OS security update: %s. Distros often fix without changing the version number%s. If no update exists yet, move the app to a venv with %s>=%s." % (
+                        os_update_cmd(pkg), (", so a re-scan shows OK once the changelog lists " + " ".join(cves)) if cves else "", adv["PACKAGE"], adv["FIXED"])))
         elif aff:
             fx = fix_for(adv, pyver)
             if fx:
@@ -297,7 +357,7 @@ def analyze_env(py, info, advisories, hostbins):
             findings.append(dict(base, status="OK", detail="%s %s is not affected" % (rec[1], ver), fix=""))
     # pip itself: cross-reference to the CA incident so the upgrade is safe
     pipv = (d.get("pip") or [None])[0]
-    if pipv and vcmp(pipv, "26.2.2") < 0 and any(f["status"] in ("AFFECTED",) for f in findings):
+    if pipv and vcmp(pipv, "26.2.2") < 0 and any(f["status"] == "AFFECTED" and not f.get("os_pkg") for f in findings):
         findings.append({"advisory": "emudhra-2026-10", "package": "pip", "version": pipv, "risk": [], "severity": "high", "location": "", "source": "note",
                          "status": "WARN", "detail": "pip %s is older than 26.2.2 (eMudhra CA fix): if this pip uses its own CA bundle, upgrading over the network is exposed to interception" % pipv,
                          "fix": "Check with python-cert-responder (pycert-scan.py --python <this env>) and use its checksum-verified pip bootstrap if needed"})
@@ -409,13 +469,31 @@ def project_scan(root, advisories):
     pkg_alt = "|".join(re.escape(a["PACKAGE"]) for a in advisories)
     req_re = re.compile(r"^\s*(%s)(\[[^\]]*\])?\s*%s?\s*(;.*)?$" % (pkg_alt, SPEC_RE), re.I)
     usage = {}   # dir -> set of hint labels
+    pulled = []  # (regex, adv, trigger)
+    for a in advisories:
+        for trig in a["_pulled"]:
+            m = re.match(r"^([\w.-]+)(?:\[([\w.,-]+)\])?$", trig)
+            if not m: continue
+            extra = (r"\[[^\]]*\b%s\b[^\]]*\]" % re.escape(m.group(2))) if m.group(2) else r"(\[[^\]]*\])?"
+            pulled.append((re.compile(r"(?<![\w.-])%s%s" % (re.escape(m.group(1)), extra), re.I), a, trig))
+    def check_pulled(path, text, adv_pinned):
+        for rx, a, trig in pulled:
+            if a["ADVISORY_ID"] in adv_pinned: continue
+            mm = rx.search(text)
+            if mm:
+                add("WARN", path, text[:mm.start()].count("\n") + 1, a, mm.group(0)[:60],
+                    "%s installs %s, but this file does not pin it: the resolved version depends on the lockfile or install date" % (trig, a["PACKAGE"]),
+                    "Add %s>=%s as a constraint (or re-lock) so it cannot resolve to a vulnerable version" % (a["PACKAGE"], a["FIXED"]))
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in PROJECT_SKIP and not (d.startswith(".") and d != ".github")]
         for fn in filenames:
             p = os.path.join(dirpath, fn); low = fn.lower()
             try:
                 if (low.endswith((".txt", ".in")) and ("requirement" in low or "constraint" in low)):
-                    for i, line in enumerate(open(p, encoding="utf-8", errors="replace"), 1):
+                    txt_all = open(p, encoding="utf-8", errors="replace").read()
+                    pinned = {pkgs[norm(m.group(1))]["ADVISORY_ID"] for m in (req_re.match(l.split("#")[0].rstrip()) for l in txt_all.splitlines()) if m}
+                    check_pulled(p, "\n".join(l.split("#")[0] for l in txt_all.splitlines()), pinned)
+                    for i, line in enumerate(txt_all.splitlines(), 1):
                         m = req_re.match(line.split("#")[0].rstrip())
                         if m:
                             adv = pkgs[norm(m.group(1))]; st, why = spec_status((m.group(3) or ""), adv)
@@ -424,6 +502,7 @@ def project_scan(root, advisories):
                 elif low == "pyproject.toml":
                     txt = open(p, encoding="utf-8", errors="replace").read()
                     rp = re.search(r'requires-python\s*=\s*"([^"]+)"', txt)
+                    check_pulled(p, txt, {a["ADVISORY_ID"] for a in advisories if re.search(r'["\'\s]%s\b' % re.escape(a["PACKAGE"]), txt, re.I)})
                     for adv in advisories:
                         for m in re.finditer(r'["\'](%s)(\[[^\]]*\])?\s*%s?\s*(;[^"\']*)?["\']' % (re.escape(adv["PACKAGE"]), SPEC_RE), txt, re.I):
                             st, why = spec_status(m.group(3) or "", adv)
@@ -557,7 +636,9 @@ def write_fix_plan(path, envs, projects, advisories):
             L.append("### %s  [%s]" % (env_label(e), e["status"]))
             pins, notes = [], []
             for f in e["findings"]:
-                if f["status"] == "AFFECTED" and f.get("target"):
+                if f["status"] == "AFFECTED" and f.get("os_pkg"):
+                    notes.append("- %s (OS package `%s`): `%s`" % (f["package"], f["os_pkg"], os_update_cmd(f["os_pkg"])))
+                elif f["status"] == "AFFECTED" and f.get("target") and '"%s>=%s"' % (f["package"], f["target"]) not in pins:
                     pins.append('"%s>=%s"' % (f["package"], f["target"]))
                 elif f["status"] in ("BLOCKED", "WARN"):
                     notes.append("- %s: %s" % (f["package"], f["fix"]))

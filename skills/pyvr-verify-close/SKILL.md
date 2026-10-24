@@ -30,6 +30,7 @@ Also run `<PY> -m pip check` in each fixed environment and the app's tests.
 - [ ] Dockerfiles on Python >= 3.11 where the package is used; images rebuilt with `--pull` and redeployed
 - [ ] BLOCKED items: owner, upgrade date, mitigations applied
 - [ ] Ghostscript removed (or justified) on hosts that process untrusted images
+- [ ] HTTP2Shell: Brotli >= 1.2.1 and brotlicffi >= 1.2.1.0 everywhere (or uninstalled), extras pinned, OS `python3-brotli` updated
 - [ ] `pip check` and app tests pass after upgrades
 - [ ] Colleagues/clients informed (pyvr-comms)
 

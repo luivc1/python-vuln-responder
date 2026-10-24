@@ -20,6 +20,8 @@ Every value must come from a source read in this session.
 1. Copy `advisories/pillow-2026-10.env` to `advisories/<package>-<yyyy>-<mm>.env` (or
    update it). Fields: `ADVISORY_ID`, `ADVISORY_NAME`, `PACKAGE` (PyPI name),
    `IMPORT_NAMES` (comma-separated modules), `SEVERITY`, `PUBLISHED`, `SUMMARY`,
+   `BACKPORT_CVES` (space-separated; an OS-packaged copy counts as fixed when its distro
+   changelog lists all of them), `PULLED_BY` (`pkg[extra]|...` that install this package),
    `AFFECTED` (comma = AND, `|` = OR), `FIXED`, `FIX_MIN_PYTHON`, `BACKPORTS`
    (`version@minpython|...`), `RISK_BINARIES` / `RISK_PACKAGES` (`name:why|...`),
    `CODE_HINTS` (`regex => label ;; ...`), `MITIGATIONS`, `IDS`, `RELOCK`, `SOURCES`,

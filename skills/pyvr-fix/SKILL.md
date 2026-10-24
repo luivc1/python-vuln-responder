@@ -1,6 +1,6 @@
 ---
 name: pyvr-fix
-description: Fix vulnerable PyPI packages safely across environments and projects (first advisory - upgrade Pillow to 13.0.0) - per-venv upgrades, system/distro Pythons, conda, Docker images, requirements and lockfile re-locks, and Python 3.10 apps that cannot take the fix (upgrade path plus interim mitigations). Use for "fix Pillow", "upgrade Pillow in all venvs", "we're stuck on Python 3.10", "arreglar Pillow", "actualizar los lockfiles".
+description: Fix vulnerable PyPI packages safely across environments and projects (upgrade Pillow to 13.0.0; Brotli to 1.2.1 and brotlicffi to 1.2.1.0 for HTTP2Shell) - per-venv upgrades, system/distro Pythons, conda, Docker images, requirements and lockfile re-locks, and Python 3.10 apps that cannot take the fix (upgrade path plus interim mitigations). Use for "fix Pillow", "upgrade Pillow in all venvs", "we're stuck on Python 3.10", "arreglar Pillow", "actualizar los lockfiles".
 ---
 
 # Fix (changes systems: approval required at every step)
@@ -26,7 +26,11 @@ platform, BLOCKED Pythons and rollback.
    pins; rebuild with `--pull`; redeploy.
 5. **BLOCKED (Python 3.10):** plan the Python upgrade (playbooks > BLOCKED). Until it
    ships, apply the interim mitigations and record an owner and date.
-6. **Risk reducers, any time:** remove Ghostscript where EPS is not needed; uninstall
+6. **HTTP2Shell (Brotli):** `<PY> -m pip install --upgrade "Brotli>=1.2.1"` (and
+   `"brotlicffi>=1.2.1.0"`); add `Brotli>=1.2.1` as a constraint wherever
+   `urllib3[brotli]`, `httpx[brotli]` or `aiohttp[speedups]` is declared; OS copies via
+   `apt`/`dnf`. Where Brotli is optional, uninstalling it is a valid fix (playbooks).
+7. **Risk reducers, any time:** remove Ghostscript where EPS is not needed; uninstall
    `olefile` where FlashPix is not needed (only with approval and after checking dependents).
 
 ## 3. After each change

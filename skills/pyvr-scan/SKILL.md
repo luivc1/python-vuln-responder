@@ -1,6 +1,6 @@
 ---
 name: pyvr-scan
-description: Find every Python environment, lockfile, Dockerfile and code path carrying a vulnerable PyPI package (first advisory - Pillow < 13.0.0) - system Pythons, python.org/Homebrew/pyenv/conda/uv installs, all virtualenvs, requirements, pyproject, uv/poetry/pdm/Pipfile/pylock locks, environment.yml, Dockerfiles, and code that imports the package. Flags Pythons too old for the fix. Use for "scan for the Pillow flaw", "which venvs have old Pillow", "check our repos", "escanea mis proyectos de Python".
+description: Find every Python environment, lockfile, Dockerfile and code path carrying a vulnerable PyPI package (advisories - Pillow < 13.0.0; HTTP2Shell Brotli < 1.2.1 and brotlicffi < 1.2.1.0) - system Pythons, python.org/Homebrew/pyenv/conda/uv installs, all virtualenvs, requirements, pyproject, uv/poetry/pdm/Pipfile/pylock locks, environment.yml, Dockerfiles, and code that imports the package. Flags Pythons too old for the fix. Use for "scan for the Pillow flaw", "which venvs have old Pillow", "check our repos", "escanea mis proyectos de Python".
 ---
 
 # Scan (read-only)
@@ -29,12 +29,16 @@ Windows: `py -3 pyvuln-scan.py --local ...` in PowerShell. Outputs: `.html`, `.c
 |---|---|---|
 | AFFECTED | A vulnerable version is installed or pinned, and a fix exists for that Python | pyvr-fix |
 | BLOCKED | The fix needs a newer Python (Pillow 13.0.0 needs >= 3.11): a 3.10 env, `requires-python` or `FROM python:3.10` | pyvr-fix > BLOCKED |
-| WARN | A range allows vulnerable versions (resolution depends on the lock), an image's Python is too old, OSV issue with no fix, or pip < 26.2.2 (upgrade it safely first) | pyvr-fix |
+| WARN | A range allows vulnerable versions (resolution depends on the lock), an extra pulls the package in without a pin (`httpx[brotli]`, `urllib3[brotli]`, `aiohttp[speedups]`), an image's Python is too old, OSV issue with no fix, or pip < 26.2.2 (upgrade it safely first) | pyvr-fix |
 | CHECK | Could not parse or probe something | Confirm manually |
 | OK | Fixed version installed or required | Verify later |
 | INFO | Code imports the package; hints show risky calls (thumbnail/draft, EPS, TIFF to memory) | Prioritize these apps |
 
-Risk lines under an environment: Ghostscript present (EPS path), olefile present (FPX path).
+Risk lines under an environment: Ghostscript present (EPS path), olefile present (FPX
+path); for Brotli, the HTTP clients in that environment that decode it automatically
+(urllib3/requests, aiohttp, httpx, Scrapy). Packages installed by apt/dnf are matched to
+their OS package: OK when its changelog lists the advisory's `BACKPORT_CVES`, otherwise
+AFFECTED with the OS update command (not pip).
 
 ## Present
 

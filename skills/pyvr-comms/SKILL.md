@@ -10,7 +10,8 @@ include exploit details beyond what the advisory states.
 
 | Situation | Template (`templates/`) |
 |---|---|
-| Colleagues / dev team | `team-briefing.md` |
+| Colleagues / dev team (Pillow) | `team-briefing.md` |
+| Colleagues / dev team (HTTP2Shell, Brotli) | `team-briefing-brotli.md` |
 | Clients whose apps you maintain | `client-notice.md` |
 | Fixed and verified | `fixed-confirmation.md` |
 
